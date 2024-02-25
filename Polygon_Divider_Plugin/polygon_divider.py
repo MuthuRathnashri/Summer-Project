@@ -100,39 +100,62 @@ class PolygonDividerTask(QgsTask):
 		self.exception = None
 
 
-	def finished(self, result):
-		"""
-		* This function is automatically called when the task has completed (successfully or not).
-		* It called from the main thread, so it's safe to do GUI operations and raise Python exceptions here.
-		* result is the return value from self.run.
-		"""
-		# success
-		if result:
+	def remove_smallest_area_polygon(self, layer):
+		# Get all the features in the layer
+		features = [f for f in layer.getFeatures()]
+		
+		# Sort features by area in ascending order
+		features.sort(key=lambda x: x.geometry().area())
+		
+		# Get the smallest area feature (first feature in the sorted list)
+		smallest_area_feature = features[0]
+		
+		# Create a new list of features without the smallest area feature
+		updated_features = [f for f in features if f != smallest_area_feature]
+		
+		# Create a new layer with the updated features
+		updated_layer = QgsVectorLayer("Polygon?crs=EPSG:4326", "Updated Layer", "memory")
+		updated_layer_data = updated_layer.dataProvider()
 
-			# Notify User
+		# Define the attributes and fields for the new layer
+		updated_layer_data.addAttributes(layer.fields().toList())
+		updated_layer.updateFields()
+
+		for feature in updated_features:
+			updated_layer_data.addFeature(feature)
+		
+		# Save the updated layer to a shapefile
+		updated_layer_path = self.outFilePath.replace('.shp', '_modified.shp')
+		QgsVectorFileWriter.writeAsVectorFormat(updated_layer, updated_layer_path, "CP1250", updated_layer.crs(), "ESRI Shapefile")
+		
+		return updated_layer
+
+	
+	def finished(self, result):
+		if result:
 			QgsMessageLog.logMessage('Polygon Division completed', MESSAGE_CATEGORY, Qgis.Success)
 			iface.messageBar().pushMessage("Success!", 'Polygon Division completed', level=Qgis.Success, duration=3)
 
-			# finally, open the resulting file and return it
 			layer = iface.addVectorLayer(self.outFilePath, 'Divided Polygon', "ogr")
-
-			# alert if invalid
 			if not layer.isValid():
 				raise Exception("Output Dataset Invalid")
 
-		# failure
+			updated_layer = self.remove_smallest_area_polygon(layer)
+			updated_layer_path = self.outFilePath.replace('.shp', '_modified.shp')
+			
+			QgsMessageLog.logMessage("Smallest area polygon removed, modified shapefile saved.", MESSAGE_CATEGORY, Qgis.Success)
+			iface.messageBar().pushMessage("Success!", 'Smallest area polygon removed, modified shapefile saved', level=Qgis.Success, duration=3)
+
+			updated_layer = iface.addVectorLayer(updated_layer_path, 'Modified Divided Polygon', "ogr")
+			if not updated_layer.isValid():
+				raise Exception("Modified Dataset Invalid")
 		else:
-			# failed without exception (user cancel)
 			if self.exception is None:
 				QgsMessageLog.logMessage('Polygon Division exited without exception', MESSAGE_CATEGORY, Qgis.Warning)
 				iface.messageBar().pushMessage("Warning:", 'Polygon Division Cancelled', level=Qgis.Warning, duration=3)
-
-			# failed with exception (raise exception)
 			else:
 				QgsMessageLog.logMessage(f'Polygon Division Exception: {self.exception}', MESSAGE_CATEGORY, Qgis.Critical)
 				iface.messageBar().pushMessage("Error:", f'Polygon Division Failed: {str(self.exception)}', level=Qgis.Critical)
-				# raise self.exception
-
 
 	def cancel(self):
 		"""
@@ -1258,6 +1281,7 @@ class PolygonDivider:
 				total_area = 0
 				for feature in inFile.getFeatures():
 					total_area += feature.geometry().area()
+					print(total_area)
 
 				# calculate the desired target area
 				targetArea = int((total_area / float(self.dlg.lineEdit_3.text())) + 0.5)
