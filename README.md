@@ -1,4 +1,4 @@
-# Summer-Project {Live here}(https://muthurathnashri.github.io/link_sp/)
+# Summer-Project [Live here](https://muthurathnashri.github.io/link_sp/)
 # Irregular Polygon Subdivider for Farmer Use Case
 
 # PROBLEM  STATEMENT
